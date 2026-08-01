@@ -1,6 +1,5 @@
 package zm.co.zanaco.tracker.api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -49,13 +48,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.flyway.enabled=false",
         "jwt.secret=test-secret-key-that-is-at-least-32-characters",
         "jwt.expiration-ms=86400000",
-        "server.servlet.context-path="
+        "server.servlet.context-path=",
+        "app.seeder.enabled=false"
 })
 @DisplayName("Security rules")
 class SecurityRulesTest {
 
     @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper objectMapper;
 
     @MockitoBean private InitiativeService initiativeService;
     @MockitoBean private BudgetService budgetService;

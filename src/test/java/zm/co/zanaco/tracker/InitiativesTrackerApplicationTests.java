@@ -21,7 +21,8 @@ import org.springframework.test.context.TestPropertySource;
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
         "spring.flyway.enabled=false",
-        "jwt.secret=test-only-secret-at-least-32-characters-long"
+        "jwt.secret=test-only-secret-at-least-32-characters-long",
+        "app.seeder.enabled=false"
 })
 class InitiativesTrackerApplicationTests {
 
