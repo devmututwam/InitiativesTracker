@@ -11,11 +11,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import zm.co.zanaco.tracker.domain.Budget;
 import zm.co.zanaco.tracker.domain.Initiative;
 import zm.co.zanaco.tracker.domain.SavingsRecord;
+import zm.co.zanaco.tracker.domain.StatusHistory;
 import zm.co.zanaco.tracker.domain.enums.CostType;
 import zm.co.zanaco.tracker.domain.enums.InitiativeStatus;
 import zm.co.zanaco.tracker.domain.enums.Priority;
 import zm.co.zanaco.tracker.dto.CalculateSavingRequest;
 import zm.co.zanaco.tracker.dto.SavingsRecordResponseDto;
+import zm.co.zanaco.tracker.dto.StatusChangeDto;
 import zm.co.zanaco.tracker.exception.ResourceNotFoundException;
 import zm.co.zanaco.tracker.mapper.InitiativeMapper;
 import zm.co.zanaco.tracker.mapper.SavingsRecordMapper;
@@ -26,6 +28,7 @@ import zm.co.zanaco.tracker.repository.SavingsRecordRepository;
 import zm.co.zanaco.tracker.repository.StatusHistoryRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -38,7 +41,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("InitiativeServiceImpl – calculateSavings")
+@DisplayName("InitiativeServiceImpl")
 class InitiativeServiceImplTest {
 
     @Mock private InitiativeRepository initiativeRepository;
@@ -115,6 +118,87 @@ class InitiativeServiceImplTest {
     // -------------------------------------------------------------------------
     // Tests
     // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("changeStatus")
+    class ChangeStatus {
+
+        @Test
+        @DisplayName("persists a StatusHistory with old/new status, changedBy and comment")
+        void changesStatus_persistsHistoryRecord() {
+            Initiative initiative = stubInitiative(10L, "PRJ-010");
+            initiative.setStatus(InitiativeStatus.PLANNED);
+
+            StatusChangeDto dto = new StatusChangeDto(
+                    InitiativeStatus.IN_PROGRESS, "analyst@zanaco.zm", "Starting delivery");
+
+            when(statusHistoryRepository.save(any(StatusHistory.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.changeStatus(10L, dto);
+
+            // Verify initiative status is updated in memory
+            assertThat(initiative.getStatus()).isEqualTo(InitiativeStatus.IN_PROGRESS);
+
+            // Verify the saved StatusHistory has correct field values
+            ArgumentCaptor<StatusHistory> captor = ArgumentCaptor.forClass(StatusHistory.class);
+            verify(statusHistoryRepository).save(captor.capture());
+
+            StatusHistory saved = captor.getValue();
+            assertThat(saved.getOldStatus()).isEqualTo(InitiativeStatus.PLANNED);
+            assertThat(saved.getNewStatus()).isEqualTo(InitiativeStatus.IN_PROGRESS);
+            assertThat(saved.getChangedBy()).isEqualTo("analyst@zanaco.zm");
+            assertThat(saved.getComment()).isEqualTo("Starting delivery");
+            assertThat(saved.getChangedAt()).isNotNull();
+            assertThat(saved.getInitiative()).isSameAs(initiative);
+        }
+
+        @Test
+        @DisplayName("changedAt is set to a time at or after the call instant")
+        void changesStatus_changedAtIsRecent() {
+            stubInitiative(11L, "PRJ-011");
+            when(statusHistoryRepository.save(any(StatusHistory.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+            service.changeStatus(11L, new StatusChangeDto(InitiativeStatus.ON_HOLD, null, null));
+            LocalDateTime after = LocalDateTime.now().plusSeconds(1);
+
+            ArgumentCaptor<StatusHistory> captor = ArgumentCaptor.forClass(StatusHistory.class);
+            verify(statusHistoryRepository).save(captor.capture());
+
+            LocalDateTime changedAt = captor.getValue().getChangedAt();
+            assertThat(changedAt).isAfterOrEqualTo(before).isBeforeOrEqualTo(after);
+        }
+
+        @Test
+        @DisplayName("null changedBy and comment are propagated to the history record")
+        void changesStatus_nullFields_propagatedToHistory() {
+            stubInitiative(12L, "PRJ-012");
+            when(statusHistoryRepository.save(any(StatusHistory.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.changeStatus(12L, new StatusChangeDto(InitiativeStatus.CANCELLED, null, null));
+
+            ArgumentCaptor<StatusHistory> captor = ArgumentCaptor.forClass(StatusHistory.class);
+            verify(statusHistoryRepository).save(captor.capture());
+
+            assertThat(captor.getValue().getChangedBy()).isNull();
+            assertThat(captor.getValue().getComment()).isNull();
+            assertThat(captor.getValue().getNewStatus()).isEqualTo(InitiativeStatus.CANCELLED);
+        }
+
+        @Test
+        @DisplayName("throws ResourceNotFoundException when initiative does not exist")
+        void changeStatus_unknownInitiative_throwsNotFound() {
+            when(initiativeRepository.findById(999L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() ->
+                    service.changeStatus(999L,
+                            new StatusChangeDto(InitiativeStatus.COMPLETED, null, null)))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
 
     @Nested
     @DisplayName("Positive saving (vendor budget > total costs)")
